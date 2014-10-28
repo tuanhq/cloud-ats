@@ -36,14 +36,17 @@ public class DeleteGroupListener implements EventListener {
         Group group = new Group().from(event.getSource());
         if (group.getInt("level") > 1) return;
         
-        VMModel jenkins = VMHelper.getVMsByGroupID(group.getId(), new BasicDBObject("jenkins", true)).get(0);
-        List<VMModel> vms = VMHelper.getVMsByGroupID(group.getId());
-        for (VMModel vm : vms) {
-          VMHelper.removeVM(vm);
-          VirtualMachineAPI.destroyVM(VMHelper.getCloudStackClient(), vm.getId(), true);
-          if (!vm.getBoolean("system")) {
-            new JenkinsSlave(new JenkinsMaster(jenkins.getPublicIP(), "http", 8080), vm.getPublicIP()).release();
-            VMHelper.getKnife().deleteNode(vm.getName());
+        List<VMModel> list = VMHelper.getVMsByGroupID(group.getId(), new BasicDBObject("jenkins", true));
+        if (list.size() == 1) { 
+          VMModel jenkins = list.get(0);
+          List<VMModel> vms = VMHelper.getVMsByGroupID(group.getId());
+          for (VMModel vm : vms) {
+            VMHelper.removeVM(vm);
+            VirtualMachineAPI.destroyVM(VMHelper.getCloudStackClient(), vm.getId(), true);
+            if (!vm.getBoolean("system")) {
+              new JenkinsSlave(new JenkinsMaster(jenkins.getPublicIP(), "http", 8080), vm.getPublicIP()).release();
+              VMHelper.getKnife().deleteNode(vm.getName());
+            }
           }
         }
         

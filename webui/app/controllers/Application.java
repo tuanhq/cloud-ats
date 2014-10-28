@@ -240,10 +240,10 @@ public class Application extends Controller {
     FeatureInitializer.createVMFeature(root, system);
     
     //Initialize Performance
-    FeatureInitializer.createTestFeature(TestProjectType.performance);
+    FeatureInitializer.createTestFeature(system, TestProjectType.performance);
     
     //Initialize Functional
-    FeatureInitializer.createTestFeature(TestProjectType.functional);
+    FeatureInitializer.createTestFeature(system, TestProjectType.functional);
     
     //login
     session().clear();

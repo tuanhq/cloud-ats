@@ -11,6 +11,8 @@ import interceptor.AuthenticationInterceptor;
 import interceptor.Authorization;
 import interceptor.WizardInterceptor;
 
+import java.io.BufferedInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -112,10 +114,33 @@ public class FunctionalController extends TestController {
         while(entries.hasMoreElements()){
             ZipEntry entry = entries.nextElement();
             System.out.println(entry.getName());
+            
             if (entry.isDirectory()) continue;
-            gitlabAPI.createFile(gitProject, entry.getName(), "master", StringUtil.readStream(zip.getInputStream(entry)), "Snapshot 1");
+            
+            String name = entry.getName();
+            String folderDest = "";
+            String fileDest = name;
+            if (name.indexOf('/') != -1) {
+              folderDest = name.substring(0, name.lastIndexOf('/'));
+              fileDest = name.substring(name.lastIndexOf('/') + 1);
+            }
+            
+            SSHClient.sendFile(jenkins.getPublicIP(), 22, jenkins.getUsername(), jenkins.getPassword(), 
+                "/tmp/" + testName + "/" + folderDest, fileDest, zip.getInputStream(entry));
+            
+            //make commit
+            Session session = SSHClient.getSession(jenkins.getPublicIP(), 22, "ubuntu", "ubuntu");
+            ChannelExec channel = (ChannelExec) session.openChannel("exec");
+
+            channel.setCommand("cd /tmp/" + testName + " && git add -A && git commit -m 'Snapshot 1' && git push origin master");
+            channel.connect();
+
+            SSHClient.printOut(System.out, channel);
+            channel.disconnect();
+            session.disconnect();
         }
-        
+        zip.close();
+
         if (run) return runProject(project.getId());
       }
       return redirect(routes.FunctionalController.index());
@@ -204,6 +229,8 @@ public class FunctionalController extends TestController {
     channel.connect();
     
     SSHClient.printOut(System.out, channel);
+    channel.disconnect();
+    session.disconnect();
     return project;
   }
 }

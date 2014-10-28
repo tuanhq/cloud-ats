@@ -71,6 +71,8 @@ public class JMeterFactory {
     String pom = factory.createPom(companyName, projectName);
     api.createFile(project, "pom.xml", "master", pom, "init pom");
     
+    channel.disconnect();
+    session.disconnect();
     return project;
   }
   

@@ -106,7 +106,7 @@ public class VMCreator {
         
         //sudo
         ChannelExec channel = (ChannelExec) session.openChannel("exec");
-        //TODO:workaround for unclean template
+        //TODO: workaround for unclean template
         String command = "sed 's/172.27.4.81/" + vmModel.getPublicIP() + "/' /etc/hosts > /tmp/hosts";
         channel.setCommand(command);
         channel.connect();

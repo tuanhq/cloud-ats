@@ -90,7 +90,7 @@ public class FeatureInitializer {
     GroupDAO.getInstance(Application.dbName).update(systemGroup);
   }
   
-  public static void createTestFeature(TestProjectType type) throws UserManagementException {
+  public static void createTestFeature(Group systemGroup, TestProjectType type) throws UserManagementException {
     Feature feature = null;
     
     switch (type) {
@@ -109,5 +109,8 @@ public class FeatureInitializer {
     
     FeatureDAO.getInstance(Application.dbName).create(feature);
     OperationDAO.getInstance(Application.dbName).create(o1, o2);
+    
+    systemGroup.addFeature(feature);
+    GroupDAO.getInstance(Application.dbName).update(systemGroup);
   }
 }

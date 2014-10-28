@@ -53,16 +53,20 @@ public class SSHClient {
     bis.close();
     
     long filesize = baos.size();
+    System.out.println(folderDest + "/" + fileDest + " has size: " + filesize);
+    
     command = "C0644 " + filesize + " ";
     command += fileDest;
     command += "\n";
     out.write(command.getBytes());
     out.flush();
 
+    System.out.println("command = " + command);
+    
     // send a content of lfile
     out.write(baos.toByteArray());
+      
     // send '\0'
-    out.write(new byte[] { 0 }, 0, 1);
     out.flush();
     out.close();
 
