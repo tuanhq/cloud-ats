@@ -101,7 +101,7 @@ public class AzureClient {
     return null;
   }
 
-  public Future<OperationStatusResponse> createSystemVM1(String name)  throws Exception {
+  public Future<OperationStatusResponse> createSystemVM(String name)  throws Exception {
     return createVM(name, "cats-sys-image", VirtualMachineRoleSize.MEDIUM);
   }
   
