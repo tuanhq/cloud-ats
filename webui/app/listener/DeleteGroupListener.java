@@ -11,6 +11,9 @@ import java.util.List;
 import java.util.concurrent.Future;
 
 import models.vm.VMModel;
+import openstack.OpenstackCredential;
+import openstack.nova.JCloudsNova;
+import openstack.nova.ServerAction;
 
 import org.ats.cloudstack.VirtualMachineAPI;
 import org.ats.common.ssh.SSHClient;
@@ -20,6 +23,7 @@ import org.ats.component.usersmgt.EventListener;
 import org.ats.component.usersmgt.group.Group;
 import org.ats.jenkins.JenkinsMaster;
 import org.ats.jenkins.JenkinsSlave;
+import org.jclouds.openstack.nova.v2_0.domain.Server;
 
 import play.Logger;
 
@@ -80,9 +84,17 @@ public class DeleteGroupListener implements EventListener {
           public void run() {
             for (VMModel vm : vms) {
               try {
-                Future<OperationStatusResponse> response = VMHelper.getAzureClient().deleteVirtualMachineByName(vm.getId());
-                OperationStatusResponse result = response.get();
-                Logger.debug("Deleted vm " + vm.getId() + " is " + result.getStatus());
+                
+//                Future<OperationStatusResponse> response = VMHelper.getAzureClient().deleteVirtualMachineByName(vm.getId());
+//                OperationStatusResponse result = response.get();
+                
+                VMModel jenkins = VMHelper.getVMsByGroupID(vm.getGroup().getId(), new BasicDBObject("jenkins", true)).get(0);
+                OpenstackCredential openstackCredential = new OpenstackCredential(jenkins.getTenant(), jenkins.getTenantUser(), jenkins.getTenantPassword());
+                JCloudsNova jcloudNova = VMHelper.getJCloudsNovaInstance(openstackCredential);
+                
+                Server server = jcloudNova.getServerByName(vm.getName());
+                jcloudNova.serverAction(server.getId(), ServerAction.DELETE);
+                Logger.debug("Deleted vm " + vm.getId() + " is " + server.getStatus());
               } catch (Exception e) {
                 e.printStackTrace();
               }

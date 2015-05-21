@@ -12,6 +12,7 @@ import java.util.Collection;
 import models.test.TestProjectModel;
 import models.vm.VMModel;
 import models.vm.VMModel.VMStatus;
+import openstack.OpenstackCredential;
 
 import org.ats.component.usersmgt.UserManagementException;
 import org.ats.component.usersmgt.feature.Feature;
@@ -74,7 +75,7 @@ public class Application extends Controller {
       company.put("host", companyHost);
       company.put("level", 1);
       
-      String adminEmail = form.get("email");
+      final String adminEmail = form.get("email");
       String adminPassword = form.get("password");
       
       User admin = new User(dbName, adminEmail, adminEmail);
@@ -138,12 +139,15 @@ public class Application extends Controller {
       vmModel.put("normal_name", normalName);
       vmModel.setStatus(VMStatus.Initializing);
       VMHelper.createVM(vmModel);
-      
+      final OpenstackCredential openstackCredential = new OpenstackCredential(companyName,companyName,adminPassword);
       Thread thread = new Thread(new Runnable() {
         @Override
         public void run() {
           try {
-            VMCreator.createCompanySystemVM(company);
+            VMCreator.createInitialCompanySystem(openstackCredential.getTenant(),openstackCredential.getUsername() ,
+                openstackCredential.getPassword(), adminEmail, null);
+            VMCreator.createCompanySystemVM(company, openstackCredential.getTenant(),openstackCredential.getUsername() ,
+                openstackCredential.getPassword() );
           } catch (Exception e) {
             throw new RuntimeException(e);
           }

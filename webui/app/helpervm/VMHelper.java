@@ -13,12 +13,18 @@ import java.util.Map;
 
 import models.vm.VMModel;
 import models.vm.VMModel.VMStatus;
+import openstack.OpenstackCredential;
+import openstack.OpenstackFactory;
+import openstack.keystone.JCloudsKeyStone;
+import openstack.neutron.JCloudsNeutron;
+import openstack.nova.JCloudsNova;
 
 import org.ats.cloudstack.CloudStackClient;
 import org.ats.component.usersmgt.DataFactory;
 import org.ats.knife.Knife;
 
-import azure.AzureClient;
+//import azure.AzureClient;
+
 
 import com.mongodb.BasicDBObject;
 import com.mongodb.BasicDBObjectBuilder;
@@ -36,6 +42,8 @@ import controllers.Application;
  * Sep 10, 2014
  */
 public class VMHelper extends AbstractHelper {
+  
+ 
 
   public static long vmCount() {
     DB vmDB = DataFactory.getDatabase(Application.dbName);
@@ -70,6 +78,7 @@ public class VMHelper extends AbstractHelper {
     col.remove(vm);
     return true;
   }
+ 
   
   public static List<VMModel> getVMsByGroupID(String groupId) {
     DB vmDB = getDatabase();
@@ -184,16 +193,34 @@ public class VMHelper extends AbstractHelper {
     return new CloudStackClient(cloudstackApiUrl, cloudstackApiKey, cloudstackApiSecret);
   }
   
-  public static AzureClient getAzureClient() throws IOException {
-    Map<String, String> properties = getSystemProperties();
+//  public static AzureClient getAzureClient() throws IOException {
+//    Map<String, String> properties = getSystemProperties();
+//    
+//    String subcriptionIdAzure = properties.get("subscription-id");
+//    String keystorePassword = properties.get("keystore-password");
+//    String keystorePath = properties.get("keystore-path"); 
+//    
+//    String rootPath=play.Play.application().path().getAbsolutePath();
+//    String keystoreLocation = rootPath + keystorePath;
+//    return new AzureClient(subcriptionIdAzure, keystoreLocation, keystorePassword);
+//  }
+  
+  public static JCloudsKeyStone getJCloudsKeyStoneInstance(){
+    return OpenstackFactory.getJCloudsKeyStoneInstance();
+  }
+  
+  public static JCloudsNeutron getJCloudsNeutronInstance(String tenantName, String userName, String password){
+   return OpenstackFactory.getJCloudsNeutronInstance(tenantName, userName, password);
+  }
+  public static JCloudsNeutron getJCloudsNeutronInstance(OpenstackCredential credential){
+    return OpenstackFactory.getJCloudsNeutronInstance(credential);
+   }
+  public static JCloudsNova getJCloudsNovaInstance(OpenstackCredential credential){
+    return OpenstackFactory.getJCloudsNovaInstance(credential);
+  }
+  public static JCloudsNova getJCloudsNovaInstance(String tenantName, String userName, String password){
     
-    String subcriptionIdAzure = properties.get("subscription-id");
-    String keystorePassword = properties.get("keystore-password");
-    String keystorePath = properties.get("keystore-path"); 
-    
-    String rootPath=play.Play.application().path().getAbsolutePath();
-    String keystoreLocation = rootPath + keystorePath;
-    return new AzureClient(subcriptionIdAzure, keystoreLocation, keystorePassword);
+    return OpenstackFactory.getJCloudsNovaInstance(tenantName, userName, password);
   }
   
   

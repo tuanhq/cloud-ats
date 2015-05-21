@@ -93,6 +93,36 @@ public class VMModel extends BasicDBObject {
     return this.getString("normal_name");
   }
   
+  //additional
+  
+  public String getPrivateIp(){
+    return this.getString("private_ip");
+  }
+  public void setPrivateIp(String privateIp){
+    this.put("private_ip", privateIp);
+  }
+  
+  public String getTenant(){
+    return this.getString("tenant");
+  }
+  public void setTenant(String tenant){
+    this.put("tenant", tenant);
+  }
+  
+  
+  public String getTenantUser(){
+    return this.getString("tenant_username");
+  }
+  public void setTenantUser(String tenantUserName){
+    this.put("tenant_username", tenantUserName);
+  }
+  
+  public String getTenantPassword(){
+    return this.getString("tenant_password");
+  }
+  public void setTenantPassword(String tenantPassword){
+    this.put("tenant_password", tenantPassword);
+  }
   public VMModel from(DBObject source) {
     this.put("_id", source.get("_id"));
     this.put("name", source.get("name"));
@@ -111,6 +141,13 @@ public class VMModel extends BasicDBObject {
     this.put("log", source.get("log"));
     this.put("status", source.get("status"));
     this.put("normal_name", source.get("normal_name"));
+    
+    //add private ip 
+    
+    this.put("private_ip", source.get("private_ip"));
+    this.put("tenant", source.get("tenant"));
+    this.put("tenant_username", source.get("tenant_username"));
+    this.put("tenant_password", source.get("tenant_password"));
     return this;
   }
   

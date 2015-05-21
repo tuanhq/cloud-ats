@@ -8,6 +8,7 @@ import helpervm.VMHelper;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -19,20 +20,34 @@ import java.util.concurrent.Future;
 import models.vm.OfferingModel;
 import models.vm.VMModel;
 import models.vm.VMModel.VMStatus;
+import openstack.OpenstackConfiguration;
+import openstack.OpenstackCredential;
+import openstack.exception.RegionException;
+import openstack.keystone.JCloudsKeyStone;
+import openstack.neutron.JCloudsNeutron;
+import openstack.neutron.NeutronException;
+import openstack.nova.JCloudsNova;
+import openstack.nova.ServerAction;
 
 import org.ats.common.ssh.SSHClient;
 import org.ats.component.usersmgt.group.Group;
 import org.ats.jenkins.JenkinsMaster;
 import org.ats.jenkins.JenkinsSlave;
 import org.ats.knife.Knife;
+import org.jclouds.openstack.keystone.v2_0.domain.Tenant;
+import org.jclouds.openstack.keystone.v2_0.domain.User;
+import org.jclouds.openstack.neutron.v2.domain.Network;
+import org.jclouds.openstack.neutron.v2.domain.Router;
+import org.jclouds.openstack.neutron.v2.domain.Subnet;
+import org.jclouds.openstack.nova.v2_0.domain.FloatingIP;
+import org.jclouds.openstack.nova.v2_0.domain.Server;
+import org.jclouds.openstack.nova.v2_0.domain.ServerCreated;
 
 import play.Logger;
-import azure.AzureClient;
+//import azure.AzureClient;
 
 import com.jcraft.jsch.ChannelExec;
 import com.jcraft.jsch.Session;
-import com.microsoft.windowsazure.core.OperationStatusResponse;
-import com.microsoft.windowsazure.management.compute.models.RoleInstance;
 import com.mongodb.BasicDBObject;
 
 /**
@@ -41,29 +56,80 @@ import com.mongodb.BasicDBObject;
  * Sep 19, 2014
  */
 public class VMCreator {
-  
-  public static void createCompanySystemVM(Group company) throws Exception {
+  /**
+   * 
+   * @param tenantName : name of tenant (project ) on the system 
+   * @param userName : username login  openstack system 
+   * @param password : password login openstack system
+   * @param adminEmail : email register in openstack system 
+   * @param cidr : Cird of first subnet register in openstack system
+   * @throws NeutronException 
+   * @throws RegionException 
+   */
+  public static void createInitialCompanySystem(String tenantName, String userName, String password, String adminEmail, String cidr) throws RegionException, NeutronException{
     
-    AzureClient azureClient = VMHelper.getAzureClient();
+    //Create tenant and user
+    JCloudsKeyStone jCloudsKeyStone = VMHelper.getJCloudsKeyStoneInstance();
+    Tenant testTenant = jCloudsKeyStone.createTenant(tenantName, tenantName, true);
+    User user = jCloudsKeyStone.createUser(testTenant.getId(), userName, password, adminEmail, true);
+    String roleDefaultId = jCloudsKeyStone.getRoleIdByName(OpenstackConfiguration.DEFAULT_ROLE);
+    jCloudsKeyStone.addRoleOnTenant(testTenant.getId(), user.getId(), roleDefaultId);
+    
+    //creat network 
+    JCloudsNeutron jCloudsNeutron = VMHelper.getJCloudsNeutronInstance(tenantName, userName, password);
+    Network network = jCloudsNeutron.createNetwork(tenantName + "_net");
+    
+    Subnet subnet = jCloudsNeutron.createSubnet(tenantName + "_subnet", network.getId(), cidr == null ? "192.168.1.0/24": cidr );
+    //create router 
+    String externalNetworkID = jCloudsNeutron.getNetworkIdByName(OpenstackConfiguration.EXTERNAL_NETWORK);
+    Router router = jCloudsNeutron.createRouter(tenantName + "_router", externalNetworkID); 
+    jCloudsNeutron.addRouterToInterface(router.getId(), subnet.getId());
+    
+  }
+  
+  
+  public static void createCompanySystemVM(Group company, String tenantName, String userName, String password ) throws Exception {
+    
+    JCloudsNova jCloudNova = VMHelper.getJCloudsNovaInstance(tenantName, userName, password);
+    JCloudsNeutron jCloudNeutron = VMHelper.getJCloudsNeutronInstance(tenantName, userName, password);
     
     String normalName = new StringBuilder().append(company.getString("name")).append("-system").toString();
     String name = normalizeVMName(new StringBuilder(normalName).append("-").append(company.getId()).toString());
     
-    Future<OperationStatusResponse> response = azureClient.createSystemVM(name);
+    String networkId = jCloudNeutron.getNetworkIdByName(tenantName + "_net");
+    
+    Future<ServerCreated> serverCreate = jCloudNova.createSystemVM(name, networkId);
+    
+    //Future<OperationStatusResponse> response = azureClient.createSystemVM(name);
     Logger.info("Submited request to create system vm");
-    while (!response.isDone()) {
+    while (!serverCreate.isDone()) {
       System.out.print('.');
       Thread.sleep(3000);
     }
-    OperationStatusResponse status = response.get();
+    //OperationStatusResponse status = response.get();
     
-    RoleInstance vm = azureClient.getVirutalMachineByName(name);
+    ServerCreated serverCreated = serverCreate.get();
+    
+    
+    Server server =  jCloudNova.getServerByName(name);
+    ArrayList<FloatingIP> listFloatingIpAvailable = jCloudNova.listFloatingIpAvailable(); 
+    String floatingIpAddr = null;
+    if( listFloatingIpAvailable == null){
+      floatingIpAddr = jCloudNeutron.createFloatingIP().getFloatingIpAddress();      
+    }else{
+      floatingIpAddr = listFloatingIpAvailable.get(0).getIp();
+    }
+    jCloudNova.addFloatingIpToServer(floatingIpAddr, serverCreated.getId());
+    
+    String privateIp = jCloudNova.getFirstIpOfServer(server);
     
     VMModel vmModel = VMHelper.getVMByName(name);
-    vmModel.put("public_ip", vm.getIPAddress().getHostAddress());
+    vmModel.put("public_ip", floatingIpAddr);
+    vmModel.put("private_ip", privateIp);
     VMHelper.updateVM(vmModel);
     
-    Logger.info("Create system vm " + name + " has been " + status.getStatus());
+//    Logger.info("Create system vm " + name + " has been " + status.getStatus());
+    Logger.info("Create system vm " + name + " has been " + server.getStatus());
     
     List<OfferingModel> list = OfferingHelper.getEnableOfferings();
     Collections.sort(list, new Comparator<OfferingModel>() {
@@ -78,7 +144,8 @@ public class VMCreator {
     
     //add to reverse proxy 
     final String vmSystemName = name;
-    final String vmSystemIp = vm.getIPAddress().getHostAddress();
+//    final String vmSystemIp = vm.getIPAddress().getHostAddress();
+    final String vmSystemIp = floatingIpAddr;
     Thread thread = new Thread(new Runnable() {
       @Override
       public void run() {       
@@ -166,6 +233,8 @@ public class VMCreator {
     //remote node of chef server
     VMModel jenkins = VMHelper.getVMsByGroupID(vm.getGroup().getId(), new BasicDBObject("jenkins", true)).get(0);
     VMHelper.getKnife(jenkins).deleteNode(vm.getName());
+    
+    OpenstackCredential openstackCredential = new OpenstackCredential(jenkins.getTenant(), jenkins.getTenantUser(), jenkins.getTenantPassword());
 
     //remove node of jenkins server
     try {
@@ -222,8 +291,14 @@ public class VMCreator {
     }
 
     //delete virtual machine from azure
-    AzureClient azureClient = VMHelper.getAzureClient();
-    azureClient.deleteVirtualMachineByName(vmId);
+  
+   // AzureClient azureClient = VMHelper.getAzureClient();
+    //azureClient.deleteVirtualMachineByName(vmId);
+    
+    JCloudsNova jCloudNova = VMHelper.getJCloudsNovaInstance(openstackCredential);
+    String serverId = jCloudNova.getServerIdByName(vm.getName());
+    jCloudNova.serverAction(serverId, ServerAction.DELETE);
+    
     Logger.info("Destroying vm " + vmId);
   }
   
@@ -239,49 +314,74 @@ public class VMCreator {
 
   public static String createNormalVM(Group company, final String subfix, String template, final String ...recipes) throws Exception {
 
-    AzureClient azureClient = VMHelper.getAzureClient();
+    //AzureClient azureClient = VMHelper.getAzureClient();
     
     OfferingModel offering = OfferingHelper.getDefaultOfferingOfGroup(company.getId()).getOffering();
     final VMModel jenkins = VMHelper.getVMsByGroupID(company.getId(), new BasicDBObject("system", true).append("jenkins", true)).get(0);
+    
+    OpenstackCredential openstackCredential = new OpenstackCredential(jenkins.getTenant(), jenkins.getTenantUser(), jenkins.getPassword());
     
     //create instance
     String normalName = getAvailableName(company, subfix, 0);
     final String name = normalizeVMName(new StringBuilder(normalName).append("-").append(company.getId()).toString());
     QueueHolder.put(name, new ConcurrentLinkedQueue<String>());
     
-    Future<OperationStatusResponse> response = azureClient.createVM(name, template, offering.getId());
+    //Future<OperationStatusResponse> response = azureClient.createVM(name, template, offering.getId());
+    
+    JCloudsNova jCloudNova = VMHelper.getJCloudsNovaInstance(openstackCredential);
+    Future<ServerCreated> serverFuture = jCloudNova.createServerAsync(name, template, offering.getId(), null);
     Logger.info("Submited request to create test vm");
-    while (!response.isDone()) {
+    while (!serverFuture.isDone()) {
       System.out.print('.');
       Thread.sleep(3000);
     }
     
-    OperationStatusResponse status = response.get();
-    Logger.info("Create " + subfix + " vm " + name + " has been " + status.getStatus());    
+//    OperationStatusResponse status = response.get();
+    ServerCreated serverCreated = serverFuture.get();
+    
+    //add floatingIP to vm 
+    
+    JCloudsNeutron jCloudNeutron = VMHelper.getJCloudsNeutronInstance(openstackCredential);
+    String floatingIp = null;
+    ArrayList<FloatingIP> listFloatingIpAvailable = jCloudNova.listFloatingIpAvailable();
+    if(listFloatingIpAvailable==null){
+      floatingIp = jCloudNeutron.createFloatingIP().getFloatingIpAddress();
+    }else{
+      floatingIp = listFloatingIpAvailable.get(0).getIp();
+    }
+    Server server = jCloudNova.getServerByName(name);
+    jCloudNova.addFloatingIpToServer(floatingIp, serverCreated.getId());
+    String privateIp = jCloudNova.getFirstIpOfServer(server);
+//    Logger.info("Create " + subfix + " vm " + name + " has been " + status.getStatus());    
     
     //get vm by name
-    final RoleInstance vm = azureClient.getVirutalMachineByName(name);
+//    final RoleInstance vm = azureClient.getVirutalMachineByName(name);
+    final Server vm = jCloudNova.getServerByName(name);
+    Logger.info("Create " + subfix + " vm " + name + " has been " + vm.getStatus());    
     VMModel vmModel = VMHelper.getVMByName(name);
     if (vmModel == null) {
       vmModel = new VMModel(name, name, company.getId(), template, template, 
-          vm.getIPAddress().getHostAddress(), VMHelper.getSystemProperty("default-user"), VMHelper.getSystemProperty("default-password"));
+          jCloudNova.getFirstIpOfServer(vm), VMHelper.getSystemProperty("default-user"), VMHelper.getSystemProperty("default-password"));
       vmModel.put("gui", "Non-Gui".equals(subfix) ? false : true);
       vmModel.put("system", false);
       vmModel.put("offering_id", offering.getId());
       vmModel.setStatus(VMStatus.Initializing);
       vmModel.put("normal_name", normalName);
+      vmModel.setPrivateIp(privateIp);
       VMHelper.createVM(vmModel);
     } else {
-      vmModel.put("public_ip", vm.getIPAddress().getHostAddress());
+      vmModel.put("public_ip",jCloudNova.getFirstIpOfServer(vm) );
+      vmModel.setPrivateIp(privateIp);
       VMHelper.updateVM(vmModel);
     }
-
+    final String publicIp = floatingIp;
     //Run recipes
     Thread thread = new Thread() {
       @Override
       public void run() {
+         
         ConcurrentLinkedQueue<String> queue = QueueHolder.get(name);
-        String ip = vm.getIPAddress().getHostAddress();
+        String ip = publicIp;
         try {
           queue.add("Checking SSHD on " + ip);
           if (SSHClient.checkEstablished(ip, 22, 300)) {
@@ -384,12 +484,15 @@ public class VMCreator {
   }
   
   public static String getAvailableName(Group company, String subfix, int index) throws Exception {
-    AzureClient azureClient = VMHelper.getAzureClient();    
-    
+   // AzureClient azureClient = VMHelper.getAzureClient();   
+    final VMModel jenkins = VMHelper.getVMsByGroupID(company.getId(), new BasicDBObject("system", true).append("jenkins", true)).get(0);
+    OpenstackCredential openstackCredential = new OpenstackCredential(jenkins.getTenant(), jenkins.getUsername(), jenkins.getPassword());
+    JCloudsNova jCloudsNova  = VMHelper.getJCloudsNovaInstance(openstackCredential);
     String normalName = new StringBuilder(company.getString("name")).append("-").append(subfix).append("-").append(index).toString();
     String name = normalizeVMName(new StringBuilder(normalName).append("-").append(company.getId()).toString());    
-    RoleInstance vm = azureClient.getVirutalMachineByName(name);
-    if (vm == null) return normalName;
+   // RoleInstance vm = azureClient.getVirutalMachineByName(name);
+    
+    if (jCloudsNova.checkServerNameExist(name)) return normalName;
     return getAvailableName(company, subfix, index + 1);
   }
   

@@ -58,7 +58,7 @@ public class JCloudsNeutron implements Closeable {
           Subnet subnet = jcloudsNeutron.createSubnet("subnetnew", network.getId(), "192.168.4.0/24");
 //         String externalNetworkID = jcloudsNeutron.getNetworkIdByName("ext-net");
 //         Router router = jcloudsNeutron.createRouter("testRouter", externalNetworkID);
-        String routerId = jcloudsNeutron.getRouterIdByName("testRouter");
+          String routerId = jcloudsNeutron.getRouterIdByName("testRouter");
         
          jcloudsNeutron.addRouterToInterface(routerId, subnet.getId());
          

@@ -25,6 +25,11 @@ import models.vm.DefaultOfferingModel;
 import models.vm.OfferingModel;
 import models.vm.VMModel;
 import models.vm.VMModel.VMStatus;
+import openstack.OpenstackCredential;
+import openstack.OpenstackFactory;
+import openstack.exception.RegionException;
+import openstack.nova.JCloudsNova;
+import openstack.nova.ServerAction;
 
 import org.apache.cloudstack.api.ApiConstants.VMDetails;
 import org.ats.cloudstack.CloudStackClient;
@@ -44,6 +49,8 @@ import org.ats.component.usersmgt.role.RoleDAO;
 import org.ats.component.usersmgt.user.User;
 import org.ats.component.usersmgt.user.UserDAO;
 import org.ats.jenkins.JenkinsMaster;
+import org.jclouds.openstack.nova.v2_0.domain.Flavor;
+import org.jclouds.openstack.nova.v2_0.domain.Server;
 
 import play.Logger;
 import play.api.templates.Html;
@@ -68,7 +75,8 @@ import views.html.vm.terminal;
 import views.html.vm.vmbody;
 import views.html.vm.vmproperties;
 import views.html.vm.vmstatus;
-import azure.AzureClient;
+//import azure.AzureClient;
+
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -266,29 +274,41 @@ public class VMController extends Controller {
   }
 
   private static void createOffering(DynamicForm form) throws IOException {
-    String[] list = AzureClient.getAvailabilityOfferingNames();
-    for (String offering : list) {
-      OfferingModel model = null;
-      
-      switch (offering) {
-      case VirtualMachineRoleSize.EXTRASMALL:
-        model = new OfferingModel(offering, offering, 1, -1, 768);
-        model.put("disabled", form.get(offering) != null ? false : true);
-        break;
-      case VirtualMachineRoleSize.SMALL:
-        model = new OfferingModel(offering, offering, 1, -1, 1792);
-        model.put("disabled", form.get(offering) != null ? false : true);
-        break;
-      case VirtualMachineRoleSize.MEDIUM:
-        model = new OfferingModel(offering, offering, 2, -1, 3584);
-        model.put("disabled", form.get(offering) != null ? false : true);
-        break;
-      default:
-        break;
-      }
-      
+    JCloudsNova jCloudsNova = OpenstackFactory.getJcloudNovaAdmin();
+    List<Flavor> listFlavor = null;
+    try {
+      listFlavor = jCloudsNova.listFlavor();
+    } catch (RegionException e) {
+      // TODO Auto-generated catch block
+      e.printStackTrace();
+    }
+    for(Flavor flavor : listFlavor){
+      OfferingModel model = new OfferingModel(flavor.getName(), flavor.getName(), flavor.getVcpus(), -1, flavor.getRam());
       OfferingHelper.createOffering(model);
     }
+    
+//    for (String offering : list) {
+//      OfferingModel model = null;
+//      
+//      switch (offering) {
+//      case VirtualMachineRoleSize.EXTRASMALL:
+//        model = new OfferingModel(offering, offering, 1, -1, 768);
+//        model.put("disabled", form.get(offering) != null ? false : true);
+//        break;
+//      case VirtualMachineRoleSize.SMALL:
+//        model = new OfferingModel(offering, offering, 1, -1, 1792);
+//        model.put("disabled", form.get(offering) != null ? false : true);
+//        break;
+//      case VirtualMachineRoleSize.MEDIUM:
+//        model = new OfferingModel(offering, offering, 2, -1, 3584);
+//        model.put("disabled", form.get(offering) != null ? false : true);
+//        break;
+//      default:
+//        break;
+//      }
+//      
+//      OfferingHelper.createOffering(model);
+//    }
   }
   
   @With(VMWizardIterceptor.class)
@@ -320,7 +340,9 @@ public class VMController extends Controller {
 
     if (! hasRightPermission(vmId)) return forbidden(views.html.forbidden.render());
     
-    final AzureClient azureClient = VMHelper.getAzureClient();
+   // final AzureClient azureClient = VMHelper.getAzureClient();
+    
+   
     
     final VMModel vm = VMHelper.getVMByID(vmId);
     
@@ -331,8 +353,16 @@ public class VMController extends Controller {
         @Override
         public void run() {
           try {
-            Future<OperationStatusResponse> response = azureClient.startVirtualMachineByName(vmId);
-            OperationStatusResponse status = response.get();
+           // Future<OperationStatusResponse> response = azureClient.startVirtualMachineByName(vmId);
+           // OperationStatusResponse status = response.get();
+            
+            VMModel jenkins = VMHelper.getVMsByGroupID(vm.getGroup().getId(), new BasicDBObject("jenkins", true)).get(0);
+            OpenstackCredential openstackCredential = new OpenstackCredential(jenkins.getTenant(), jenkins.getTenantUser(), jenkins.getTenantPassword());
+            JCloudsNova jcloudNova = VMHelper.getJCloudsNovaInstance(openstackCredential);
+            Server server = jcloudNova.getServerByName(vmId);
+            
+            jcloudNova.serverAction(server.getId(),ServerAction.START);
+            
             String ip = vm.getPublicIP();
             if (!vm.getBoolean("gui")) {
               
@@ -351,7 +381,7 @@ public class VMController extends Controller {
               }
             }
             
-            Logger.info("Started vm" + vmId + " " + status.getStatus());
+            Logger.info("Started vm" + vmId + " " + server.getStatus());
             
             vm.setStatus(VMStatus.Ready);
             VMHelper.updateVM(vm);
@@ -371,11 +401,17 @@ public class VMController extends Controller {
         @Override
         public void run() {
           try {
-            Future<OperationStatusResponse> response = azureClient.stopVirtualMachineByName(vmId);
-            OperationStatusResponse status =  response.get();
+//            Future<OperationStatusResponse> response = azureClient.stopVirtualMachineByName(vmId);
+//            OperationStatusResponse status =  response.get();
+            
+            VMModel jenkins = VMHelper.getVMsByGroupID(vm.getGroup().getId(), new BasicDBObject("jenkins", true)).get(0);
+            OpenstackCredential openstackCredential = new OpenstackCredential(jenkins.getTenant(), jenkins.getTenantUser(), jenkins.getTenantPassword());
+            JCloudsNova jcloudNova = VMHelper.getJCloudsNovaInstance(openstackCredential);
+            Server server = jcloudNova.getServerByName(vmId);
+            jcloudNova.serverAction(server.getId(), ServerAction.STOP);
             vm.setStatus(VMStatus.Stopped);
             VMHelper.updateVM(vm);
-            Logger.info("Stopped vm" + vmId + " " + status.getStatus());
+            Logger.info("Stopped vm" + vmId + " " + server.getStatus());
           } catch (Exception e) {
             e.printStackTrace();
           }
@@ -466,6 +502,8 @@ public class VMController extends Controller {
 
     return true;
   }
+  
+  
 
   public static boolean hasPermission(Group group, String operation) throws Exception {
     if (!checkCurrentSystem()) {

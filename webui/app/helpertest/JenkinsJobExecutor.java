@@ -15,21 +15,24 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
-import org.ats.cloudstack.CloudStackClient;
-import org.ats.cloudstack.VirtualMachineAPI;
-import org.ats.jenkins.JenkinsMaster;
-import org.ats.jenkins.JenkinsMavenJob;
-import org.ats.jenkins.JenkinsSlave;
-import org.ats.jmeter.models.JMeterScript;
-
-import play.Logger;
 import models.test.JenkinsJobModel;
 import models.test.JenkinsJobModel.JenkinsBuildResult;
 import models.test.JenkinsJobStatus;
 import models.test.TestProjectModel;
 import models.vm.VMModel;
 import models.vm.VMModel.VMStatus;
-import azure.AzureClient;
+//import azure.AzureClient;
+import openstack.OpenstackCredential;
+import openstack.nova.JCloudsNova;
+import openstack.nova.ServerAction;
+
+import org.ats.jenkins.JenkinsMaster;
+import org.ats.jenkins.JenkinsMavenJob;
+import org.ats.jenkins.JenkinsSlave;
+import org.ats.jmeter.models.JMeterScript;
+import org.jclouds.openstack.nova.v2_0.domain.Server;
+
+import play.Logger;
 
 import com.mongodb.BasicDBObject;
 import com.mongodb.DBObject;
@@ -155,8 +158,13 @@ public class JenkinsJobExecutor {
         }
 
         try {
-          AzureClient client = VMHelper.getAzureClient();
-          client.deleteVirtualMachineByName(vm.getName());
+          //AzureClient client = VMHelper.getAzureClient();
+          //client.deleteVirtualMachineByName(vm.getName());
+          OpenstackCredential openstackCredential = new OpenstackCredential(jenkins.getTenant(), jenkins.getTenantUser(), jenkins.getTenantPassword());
+          JCloudsNova jcloudNova = VMHelper.getJCloudsNovaInstance(openstackCredential);
+          Server server  = jcloudNova.getServerByName(vm.getName());
+          jcloudNova.serverAction(server.getId(), ServerAction.DELETE);
+         
         } catch (Exception e) {
           e.printStackTrace();
           Logger.debug("Cloud not destroy vm", e);
